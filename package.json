@@ -1,0 +1,29 @@
+{
+    "name": "analytics-mcp",
+    "version": "1.0.0",
+    "type": "module",
+    "description": "MCP server for Postgres analytics",
+    "main": "build/index.js",
+    "scripts": {
+        "build": "tsc",
+        "start": "node build/index.js"
+    },
+    "dependencies": {
+        "@aws-sdk/client-cloudwatch-logs": "^3.958.0",
+        "@aws-sdk/credential-providers": "^3.958.0",
+        "@fastify/cors": "^11.2.0",
+        "@modelcontextprotocol/sdk": "^0.6.0",
+        "dotenv": "^16.3.1",
+        "fastify": "^5.6.2",
+        "luxon": "^3.7.2",
+        "nats": "^2.29.3",
+        "openai": "^6.15.0",
+        "pg": "^8.11.3"
+    },
+    "devDependencies": {
+        "@types/luxon": "^3.7.1",
+        "@types/node": "^20.10.6",
+        "@types/pg": "^8.10.9",
+        "typescript": "^5.3.3"
+    }
+}
