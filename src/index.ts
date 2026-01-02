@@ -10,6 +10,22 @@ import fs from "fs";
 import { CloudWatchLogsClient, FilterLogEventsCommand } from "@aws-sdk/client-cloudwatch-logs";
 import { fromIni } from "@aws-sdk/credential-providers";
 import { DateTime } from "luxon";
+import path from "path";
+
+// Log errors to a file for debugging initialization issues
+const LOG_FILE = path.join(process.cwd(), "mcp-startup-error.log");
+function logError(msg: string) {
+  fs.appendFileSync(LOG_FILE, `[${new Date().toISOString()}] ${msg}\n`);
+}
+
+process.on("uncaughtException", (error) => {
+  logError(`Uncaught Exception: ${error.stack}`);
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+  logError(`Unhandled Rejection: ${reason}`);
+});
 
 // Load .env from a specific path if provided
 const dotenvPath = process.env.DOTENV_PATH;
@@ -151,7 +167,7 @@ async function fetchAWSLogs(
 const server = new Server(
   {
     name: "fisioterapia-analytics",
-    version: "1.2.0",
+    version: "1.2.1",
   },
   {
     capabilities: {
@@ -453,4 +469,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 });
 
 const transport = new StdioServerTransport();
-await server.connect(transport);
+try {
+  await server.connect(transport);
+} catch (error: any) {
+  logError(`Server connection error: ${error.stack}`);
+  process.exit(1);
+}
