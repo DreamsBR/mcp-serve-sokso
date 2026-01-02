@@ -1,5 +1,6 @@
+import express from "express";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -7,12 +8,7 @@ import {
 import pg from "pg";
 import dotenv from "dotenv";
 import fs from "fs";
-import { CloudWatchLogsClient, FilterLogEventsCommand } from "@aws-sdk/client-cloudwatch-logs";
-import { fromIni } from "@aws-sdk/credential-providers";
-import { DateTime } from "luxon";
-import Fastify from "fastify";
-import cors from "@fastify/cors";
-import OpenAI from "openai";
+import cors from "cors";
 
 // --- Configuration ---
 const dotenvPath = process.env.DOTENV_PATH;
@@ -22,55 +18,32 @@ if (dotenvPath) {
   dotenv.config();
 }
 
-const API_KEY = process.env.API_KEY || "dev-key-123";
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-
-// --- Database & AWS Service ---
-class AnalyticsService {
+// --- Database Service ---
+class PoolManager {
   private pools = new Map<string, pg.Pool>();
   private configs: Record<string, string> = {};
-  private cloudWatchClient: CloudWatchLogsClient;
 
   constructor() {
     this.loadConfigs();
-    this.cloudWatchClient = new CloudWatchLogsClient({
-      region: process.env.AWS_REGION || "us-east-1",
-      credentials: fromIni({ profile: process.env.AWS_PROFILE || "sokso" }),
-    });
   }
 
-  private loadConfigs() {
-    // 1. Carga inicial desde archivo (databases.json)
+  loadConfigs() {
     const configPath = process.env.MCP_DB_CONFIG_PATH || "databases.json";
     if (fs.existsSync(configPath)) {
       try {
-        const rawConfigs = JSON.parse(fs.readFileSync(configPath, "utf8"));
-        for (const [dbName, value] of Object.entries(rawConfigs)) {
-          const val = value as string;
-          // Si el valor en el JSON es el NOMBRE de una variable de entorno, lo resolvemos
-          if (val && process.env[val]) {
-            this.configs[dbName] = process.env[val]!;
-          } else if (val && val.startsWith("postgresql://")) {
-            this.configs[dbName] = val;
-          } else {
-            this.configs[dbName] = val; // Placeholder sin resolver aún
-          }
-        }
+        this.configs = JSON.parse(fs.readFileSync(configPath, "utf8"));
       } catch (error) {
-        console.warn("Error al leer databases.json");
+        console.error("Error loading database configs:", error);
       }
     }
 
-    // 2. Sobrescribir/Añadir desde variables de entorno directas
-    for (const key in process.env) {
-      if (key.startsWith("DB_") && key.endsWith("_URL")) {
-        const dbName = key.replace("DB_", "").replace("_URL", "").toLowerCase();
-        this.configs[dbName] = process.env[key] as string;
-      }
-    }
-
-    if (Object.keys(this.configs).length === 0) {
-      console.warn("⚠️ ADVERTENCIA: No se han encontrado configuraciones de base de datos.");
+    if (process.env.DB_HOST && !this.configs["default"]) {
+      const connectionString = `postgresql://${process.env.DB_USER}:${
+        process.env.DB_PASSWORD
+      }@${process.env.DB_HOST}:${process.env.DB_PORT || 5432}/${
+        process.env.DB_NAME
+      }`;
+      this.configs["default"] = connectionString;
     }
   }
 
@@ -78,229 +51,273 @@ class AnalyticsService {
     if (!this.pools.has(name)) {
       this.loadConfigs();
       const connectionString = this.configs[name]?.trim();
-      if (!connectionString) throw new Error(`DB Config '${name}' not found.`);
+      if (!connectionString) {
+        throw new Error(
+          `Configuración '${name}' no encontrada en databases.json. Disponibles: ${Object.keys(
+            this.configs
+          ).join(", ")}`
+        );
+      }
 
-      const isLocal = connectionString.includes("localhost") || connectionString.includes("127.0.0.1");
+      const isLocal =
+        connectionString.includes("localhost") ||
+        connectionString.includes("127.0.0.1");
       const forceSSL = !isLocal || connectionString.includes("sslmode=require");
 
       const pool = new pg.Pool({
         connectionString,
         ssl: forceSSL ? { rejectUnauthorized: false } : false,
+        connectionTimeoutMillis: 10000,
+        idleTimeoutMillis: 30000,
+        max: 10,
       });
+
       this.pools.set(name, pool);
     }
     return this.pools.get(name)!;
   }
-
-  async runQuery(query: string, dbName = "default") {
-    if (!query.trim().toLowerCase().startsWith("select")) {
-      throw new Error("Solo se permiten consultas SELECT por seguridad.");
-    }
-    const pool = await this.getPool(dbName);
-    const result = await pool.query(query);
-    return result.rows;
-  }
-
-  async inspectSchema(dbName = "default") {
-    const pool = await this.getPool(dbName);
-    const client = await pool.connect();
-    try {
-      const tables = await client.query(`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'`);
-      const schema: Record<string, any> = {};
-      for (const row of tables.rows) {
-        const columns = await client.query(`SELECT column_name, data_type FROM information_schema.columns WHERE table_name = $1`, [row.table_name]);
-        schema[row.table_name] = columns.rows;
-      }
-      return schema;
-    } finally {
-      client.release();
-    }
-  }
-
-  async fetchAWSLogs(logGroupName: string, startTime: string, endTime: string, filterPattern?: string) {
-    const tz = "America/Lima";
-    const startMs = DateTime.fromISO(startTime).setZone(tz).toMillis();
-    const endMs = DateTime.fromISO(endTime).setZone(tz).toMillis();
-
-    const allEvents: any[] = [];
-    let nextToken: string | undefined;
-
-    do {
-      const response = await this.cloudWatchClient.send(new FilterLogEventsCommand({
-        logGroupName, startTime: startMs, endTime: endMs, filterPattern, nextToken
-      }));
-      if (response.events) {
-        allEvents.push(...response.events.map(e => ({
-          timestamp: DateTime.fromMillis(e.timestamp || 0).setZone(tz).toFormat("yyyy-MM-dd HH:mm:ss"),
-          message: e.message
-        })));
-      }
-      nextToken = response.nextToken;
-    } while (nextToken);
-    return allEvents;
-  }
 }
 
-const analytics = new AnalyticsService();
+const poolManager = new PoolManager();
 
-// --- OpenAI Agent ---
-class OpenAIAgent {
-  private openai: OpenAI | null = null;
-
-  constructor() {
-    if (OPENAI_API_KEY) {
-      this.openai = new OpenAI({ apiKey: OPENAI_API_KEY });
-    }
+// --- MCP Server Setup ---
+const server = new Server(
+  {
+    name: "fisioterapia-analytics",
+    version: "1.2.0",
+  },
+  {
+    capabilities: {
+      tools: {},
+    },
   }
+);
 
-  async ask(prompt: string) {
-    if (!this.openai) throw new Error("OPENAI_API_KEY no configurada.");
-
-    const tools: any[] = [
+// --- Tool Definitions ---
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  return {
+    tools: [
       {
-        type: "function",
-        function: {
-          name: "run_query",
-          description: "Ejecuta SQL SELECT en la base de datos de producción.",
-          parameters: {
-            type: "object",
-            properties: {
-              query: { type: "string" },
-              db: { type: "string", default: "default" }
+        name: "inspect_schema",
+        description:
+          "Lista todas las tablas y sus columnas en la base de datos para entender la estructura.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            db: {
+              type: "string",
+              description:
+                "Nombre de la base de datos a inspeccionar (según databases.json). Opcional, usa 'default' por defecto.",
             },
-            required: ["query"]
-          }
-        }
+          },
+        },
       },
       {
-        type: "function",
-        function: {
-          name: "get_aws_logs",
-          description: "Busca logs en AWS CloudWatch.",
-          parameters: {
-            type: "object",
-            properties: {
-              logGroupName: { type: "string" },
-              startTime: { type: "string" },
-              endTime: { type: "string" },
-              filterPattern: { type: "string" }
+        name: "run_query",
+        description:
+          "Ejecuta una consulta SQL de lectura (SELECT) en la base de datos.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            query: {
+              type: "string",
+              description:
+                "La consulta SQL a ejecutar. Solo se permiten SELECTs.",
             },
-            required: ["logGroupName", "startTime", "endTime"]
-          }
-        }
-      }
-    ];
-
-    let messages: any[] = [
-      { role: "system", content: "Eres un analista de datos experto. Tienes acceso a la base de datos de producción y logs de AWS. Responde siempre basándote en los datos obtenidos." },
-      { role: "user", content: prompt }
-    ];
-
-    // Simple loop for tool calls (max 5)
-    for (let i = 0; i < 5; i++) {
-      const response = await this.openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages,
-        tools,
-      });
-
-      const message = response.choices[0].message;
-      messages.push(message);
-
-      if (!message.tool_calls) return message.content;
-
-      for (const toolCall of message.tool_calls) {
-        if (toolCall.type !== 'function') continue;
-        const functionName = toolCall.function.name;
-        const args = JSON.parse(toolCall.function.arguments);
-        let result;
-        if (functionName === "run_query") {
-          result = await analytics.runQuery(args.query, args.db);
-        } else if (functionName === "get_aws_logs") {
-          result = await analytics.fetchAWSLogs(args.logGroupName, args.startTime, args.endTime, args.filterPattern);
-        }
-        messages.push({
-          role: "tool",
-          tool_call_id: toolCall.id,
-          content: JSON.stringify(result)
-        });
-      }
-    }
-    return "No pude completar el análisis tras varios intentos.";
-  }
-}
-
-const agent = new OpenAIAgent();
-
-// --- Fastify Server ---
-const fastify = Fastify({ logger: true });
-fastify.register(cors);
-
-// Middleware de seguridad
-fastify.addHook("preHandler", async (request, reply) => {
-  const auth = request.headers.authorization;
-  if (auth !== `Bearer ${API_KEY}`) {
-    reply.code(401).send({ error: "No autorizado" });
-  }
+            db: {
+              type: "string",
+              description:
+                "Nombre de la base de datos donde ejecutar la consulta. Opcional.",
+            },
+          },
+          required: ["query"],
+        },
+      },
+      {
+        name: "analyze_backorders",
+        description:
+          "Analiza un array de pedidos para detectar Back Orders (Cantidad > Cantidad Comprometida). Requiere datos previos obtenidos con run_query.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            data: {
+              type: "string",
+              description:
+                "Datos de pedidos en formato JSON string. Debe contener: sEstadoEnvioNetsuite, sAccionDirectora, nCantidad, nCantidadComprometida.",
+            },
+          },
+          required: ["data"],
+        },
+      },
+    ],
+  };
 });
 
-fastify.post("/ask", async (request: any) => {
-  const { prompt } = request.body;
-  if (!prompt) return { error: "Prompt requerido" };
-  const answer = await agent.ask(prompt);
-  return { answer };
-});
+// --- Tool Implementations ---
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  const dbName = (request.params.arguments?.db as string) || "default";
 
-fastify.post("/query", async (request: any) => {
-  const { query, db } = request.body;
-  const result = await analytics.runQuery(query, db);
-  return result;
-});
-
-// --- MCP Server ---
-const mcpServer = new Server({ name: "analytics-mcp", version: "2.0.0" }, { capabilities: { tools: {} } });
-
-mcpServer.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: [
-    {
-      name: "run_query",
-      description: "Ejecuta SQL SELECT.",
-      inputSchema: { type: "object", properties: { query: { type: "string" }, db: { type: "string" } }, required: ["query"] }
-    },
-    {
-      name: "get_aws_logs",
-      description: "Obtiene logs de AWS.",
-      inputSchema: { type: "object", properties: { logGroupName: { type: "string" }, startTime: { type: "string" }, endTime: { type: "string" }, filterPattern: { type: "string" } }, required: ["logGroupName", "startTime", "endTime"] }
-    }
-  ]
-}));
-
-mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const args = request.params.arguments as any;
   switch (request.params.name) {
-    case "run_query":
-      const rows = await analytics.runQuery(args.query, args.db);
-      return { content: [{ type: "text", text: JSON.stringify(rows, null, 2) }] };
-    case "get_aws_logs":
-      const logs = await analytics.fetchAWSLogs(args.logGroupName, args.startTime, args.endTime, args.filterPattern);
-      return { content: [{ type: "text", text: JSON.stringify(logs, null, 2) }] };
+    case "inspect_schema": {
+      try {
+        const pool = await poolManager.getPool(dbName);
+        const client = await pool.connect();
+        try {
+          const tablesResult = await client.query(`
+                        SELECT table_name 
+                        FROM information_schema.tables 
+                        WHERE table_schema = 'public' 
+                        AND table_type = 'BASE TABLE';
+                    `);
+          const schema: Record<string, any[]> = {};
+          for (const row of tablesResult.rows) {
+            const tableName = row.table_name;
+            const columnsResult = await client.query(
+              `
+                            SELECT column_name, data_type, is_nullable
+                            FROM information_schema.columns 
+                            WHERE table_schema = 'public' 
+                            AND table_name = $1;
+                        `,
+              [tableName]
+            );
+            schema[tableName] = columnsResult.rows;
+          }
+          return {
+            content: [{ type: "text", text: JSON.stringify(schema, null, 2) }],
+          };
+        } finally {
+          client.release();
+        }
+      } catch (error: any) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error inspecting schema (${dbName}): ${error.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+    case "run_query": {
+      const query = String(request.params.arguments?.query);
+      if (!query.trim().toLowerCase().startsWith("select")) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Error: Solo se permiten consultas SELECT por seguridad.",
+            },
+          ],
+          isError: true,
+        };
+      }
+      try {
+        const pool = await poolManager.getPool(dbName);
+        const client = await pool.connect();
+        try {
+          const result = await client.query(query);
+          return {
+            content: [
+              { type: "text", text: JSON.stringify(result.rows, null, 2) },
+            ],
+          };
+        } finally {
+          client.release();
+        }
+      } catch (error: any) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error executing query (${dbName}): ${error.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+    case "analyze_backorders": {
+      const dataArg = request.params.arguments?.data;
+      let rows: any[] = [];
+
+      try {
+        if (typeof dataArg === "string") {
+          rows = JSON.parse(dataArg);
+        } else if (Array.isArray(dataArg)) {
+          rows = dataArg;
+        } else {
+          throw new Error(
+            "El argumento 'data' debe ser un JSON string o un array."
+          );
+        }
+
+        if (!Array.isArray(rows)) {
+          throw new Error("Los datos proporcionados no son un array.");
+        }
+
+        // Análisis en código (Application Level)
+        const backOrders = rows
+          .filter((row: any) => {
+            const isEnviado = row.sEstadoEnvioNetsuite === "ENVIADO";
+            const isConfirmado = row.sAccionDirectora === "CONFIRMADO";
+            const nCantidad = Number(row.nCantidad);
+            const nComprometida = Number(row.nCantidadComprometida || 0);
+
+            // Si nCantidadComprometida es 0 o null, y nCantidad > 0, es backorder
+            // O si nCantidad > nComprometida
+            return isEnviado && isConfirmado && nCantidad > nComprometida;
+          })
+          .map((row: any) => ({
+            ...row,
+            cantidad_pendiente:
+              Number(row.nCantidad) - Number(row.nCantidadComprometida || 0),
+          }));
+
+        return {
+          content: [
+            { type: "text", text: JSON.stringify(backOrders, null, 2) },
+          ],
+        };
+      } catch (error: any) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error en analyze_backorders: ${error.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
     default:
       throw new Error("Tool not found");
   }
 });
 
-// Start modes
-const mode = process.env.START_MODE || "both"; // "mcp", "rest", "both"
+// --- Express Server (SSE) ---
+const app = express();
+app.use(cors());
 
-if (mode === "mcp" || mode === "both") {
-  const transport = new StdioServerTransport();
-  mcpServer.connect(transport).catch(console.error);
-}
+let transport: SSEServerTransport;
 
-if (mode === "rest" || mode === "both") {
-  const port = Number(process.env.PORT) || 3000;
-  fastify.listen({ port, host: "0.0.0.0" }).catch(err => {
-    fastify.log.error(err);
-    process.exit(1);
-  });
-}
+app.get("/sse", async (req, res) => {
+  transport = new SSEServerTransport("/messages", res);
+  await server.connect(transport);
+});
+
+app.post("/messages", async (req, res) => {
+  if (transport) {
+    await transport.handlePostMessage(req, res);
+  } else {
+    res.status(404).send("Transport not initialized");
+  }
+});
+
+const PORT = process.env.PORT || 3032; // Changed to 3032 to avoid conflicts
+app.listen(PORT, () => {
+  console.log(`MCP Server (SSE) running on port ${PORT}`);
+});

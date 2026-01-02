@@ -13,7 +13,10 @@
         "@aws-sdk/credential-providers": "^3.958.0",
         "@fastify/cors": "^11.2.0",
         "@modelcontextprotocol/sdk": "^0.6.0",
+        "cors": "^2.8.5",
         "dotenv": "^16.3.1",
+        "eventsource": "^4.1.0",
+        "express": "^5.2.1",
         "fastify": "^5.6.2",
         "luxon": "^3.7.2",
         "nats": "^2.29.3",
@@ -21,6 +24,8 @@
         "pg": "^8.11.3"
     },
     "devDependencies": {
+        "@types/cors": "^2.8.19",
+        "@types/express": "^5.0.6",
         "@types/luxon": "^3.7.1",
         "@types/node": "^20.10.6",
         "@types/pg": "^8.10.9",
