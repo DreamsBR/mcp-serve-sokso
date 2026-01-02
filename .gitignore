@@ -1,15 +1,6 @@
-# Dependencies
 node_modules/
-dist/
 build/
-
-# Env & Config
 .env
-
-# Logs
+databases.json
 *.log
-npm-debug.log*
-
-# OS
 .DS_Store
-Thumbs.db
