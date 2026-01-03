@@ -15,10 +15,10 @@ dotenv.config();
 global.EventSource = EventSource as any;
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-if (!OPENAI_API_KEY) {
-  console.error("Error: OPENAI_API_KEY no encontrada en .env");
-  process.exit(1);
-}
+// if (!OPENAI_API_KEY) {
+//   console.error("Error: OPENAI_API_KEY no encontrada en .env");
+//   process.exit(1);
+// }
 
 const MCP_SERVER_URL = "http://localhost:3032/sse";
 
@@ -48,8 +48,11 @@ async function main() {
         .join(", ")}`
     );
 
-    // 3. Configurar OpenAI
-    const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+    // 3. Configurar Ollama (usando librería OpenAI compatible)
+    const openai = new OpenAI({
+      baseURL: "http://localhost:11434/v1", // URL por defecto de Ollama
+      apiKey: "5b297372392a48e694012da8510e61f9.uQQs5oIB-nxqd1xDvFvxmIaH", // Ollama no requiere API Key real, pero la librería sí
+    });
 
     // Convertir herramientas MCP a formato OpenAI
     const openaiTools: OpenAI.Chat.ChatCompletionTool[] = mcpTools.map(
@@ -65,7 +68,7 @@ async function main() {
 
     // 4. Loop de conversación
     const userPrompt =
-      "Analiza si hubo backorders en los pedidos enviados y confirmados del 24 de diciembre de 2025 en la base de datos 'pedidosproduction'. Si encuentras alguno, dime cuántos son y dame un ejemplo.";
+      "Dime cuentos pedidos detalles tenemos hoy en pedidosproduccion";
 
     console.log(`\n💬 Prompt Usuario: "${userPrompt}"\n`);
 
@@ -78,9 +81,9 @@ async function main() {
       { role: "user", content: userPrompt },
     ];
 
-    // Paso 1: Llamada inicial a OpenAI
+    // Paso 1: Llamada inicial a Ollama
     const response = await openai.chat.completions.create({
-      model: "gpt-4o", // O gpt-3.5-turbo
+      model: "llama3", // Asegúrate de tener este modelo: `ollama pull llama3`
       messages: messages,
       tools: openaiTools,
       tool_choice: "auto",
@@ -123,7 +126,7 @@ async function main() {
       // Paso 3: Llamada final a OpenAI con los resultados
       console.log("\n🔄 Enviando resultados a OpenAI para respuesta final...");
       const finalResponse = await openai.chat.completions.create({
-        model: "gpt-4o",
+        model: "llama3",
         messages: messages,
       });
 

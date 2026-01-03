@@ -6,7 +6,8 @@
     "main": "build/index.js",
     "scripts": {
         "build": "tsc",
-        "start": "node build/index.js"
+        "start": "node build/index.js",
+        "test:client": "tsx src/openai_client.ts"
     },
     "dependencies": {
         "@aws-sdk/client-cloudwatch-logs": "^3.958.0",
@@ -29,6 +30,7 @@
         "@types/luxon": "^3.7.1",
         "@types/node": "^20.10.6",
         "@types/pg": "^8.10.9",
+        "tsx": "^4.21.0",
         "typescript": "^5.3.3"
     }
 }
