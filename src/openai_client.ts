@@ -15,15 +15,16 @@ dotenv.config();
 global.EventSource = EventSource as any;
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-// if (!OPENAI_API_KEY) {
-//   console.error("Error: OPENAI_API_KEY no encontrada en .env");
-//   process.exit(1);
-// }
+const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434/v1";
+const OLLAMA_API_KEY = process.env.OLLAMA_API_KEY || "ollama"; // Default placeholder if not needed
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llama3";
 
 const MCP_SERVER_URL = "http://localhost:3032/sse";
 
 async function main() {
   console.log("🚀 Iniciando Cliente OpenAI + MCP...");
+  console.log(`🤖 Modelo Ollama: ${OLLAMA_MODEL}`);
+  console.log(`🔗 URL Ollama: ${OLLAMA_BASE_URL}`);
 
   // 1. Conectar al Servidor MCP
   const transport = new SSEClientTransport(new URL(MCP_SERVER_URL));
@@ -50,8 +51,8 @@ async function main() {
 
     // 3. Configurar Ollama (usando librería OpenAI compatible)
     const openai = new OpenAI({
-      baseURL: "http://localhost:11434/v1", // URL por defecto de Ollama
-      apiKey: "5b297372392a48e694012da8510e61f9.uQQs5oIB-nxqd1xDvFvxmIaH", // Ollama no requiere API Key real, pero la librería sí
+      baseURL: OLLAMA_BASE_URL,
+      apiKey: OLLAMA_API_KEY,
     });
 
     // Convertir herramientas MCP a formato OpenAI
@@ -126,7 +127,7 @@ async function main() {
       // Paso 3: Llamada final a OpenAI con los resultados
       console.log("\n🔄 Enviando resultados a OpenAI para respuesta final...");
       const finalResponse = await openai.chat.completions.create({
-        model: "llama3",
+        model: OLLAMA_MODEL,
         messages: messages,
       });
 

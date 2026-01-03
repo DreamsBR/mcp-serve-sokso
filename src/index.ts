@@ -9,6 +9,8 @@ import pg from "pg";
 import dotenv from "dotenv";
 import fs from "fs";
 import cors from "cors";
+import swaggerUi from "swagger-ui-express";
+import swaggerJsdoc from "swagger-jsdoc";
 
 // --- Configuration ---
 const dotenvPath = process.env.DOTENV_PATH;
@@ -301,6 +303,73 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 // --- Express Server (SSE) ---
 const app = express();
 app.use(cors());
+
+// --- Swagger Setup ---
+const swaggerOptions = {
+  definition: {
+    openapi: "3.0.0",
+    info: {
+      title: "MCP Analytics Server API",
+      version: "1.2.0",
+      description: "API for Model Context Protocol (MCP) Server providing analytics tools.",
+    },
+    servers: [
+      {
+        url: `http://localhost:${process.env.PORT || 3032}`,
+        description: "Local server",
+      },
+    ],
+    paths: {
+      "/sse": {
+        get: {
+          summary: "SSE Endpoint for MCP Connection",
+          description: "Establishes a Server-Sent Events connection for the MCP protocol.",
+          responses: {
+            "200": {
+              description: "Connection established",
+              content: {
+                "text/event-stream": {
+                  schema: {
+                    type: "string",
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      "/messages": {
+        post: {
+          summary: "Message Endpoint for MCP",
+          description: "Handles incoming JSON-RPC messages from MCP clients.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                },
+              },
+            },
+          },
+          responses: {
+            "200": {
+              description: "Message processed",
+            },
+            "404": {
+              description: "Transport not initialized",
+            },
+          },
+        },
+      },
+    },
+  },
+  apis: [], // No separate route files
+};
+
+const swaggerDocs = swaggerJsdoc(swaggerOptions);
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocs));
+console.log(`Swagger UI available at http://localhost:${process.env.PORT || 3032}/api-docs`);
 
 let transport: SSEServerTransport;
 
