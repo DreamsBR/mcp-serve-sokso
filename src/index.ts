@@ -457,6 +457,11 @@ if (args.includes("--stdio")) {
             role: "user",
             parts: [{ text: `
 Sistema: Eres un asistente de análisis de datos MCP.
+Bases de Datos Disponibles (param 'db'):
+- 'pedidosproduction' (Principal)
+- 'fisioterapia'
+- 'pedidos'
+
 Herramientas:
 - scan_backorders: Busca pedidos sin stock.
 - get_aws_logs: Logs de AWS.
@@ -468,6 +473,7 @@ Reglas:
 1. Responde conciso.
 2. Si piden tablas, usa inspect_schema.
 3. Si piden backorders, usa scan_backorders.
+4. Usa SIEMPRE los nombres exactos de las BD arriba.
             ` }]
         });
         chatHistory.push({
