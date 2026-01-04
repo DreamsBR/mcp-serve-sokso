@@ -1,6 +1,8 @@
 node_modules/
 build/
+# Env & Config
 .env
+.env.*
 databases.json
 *.log
 .DS_Store
