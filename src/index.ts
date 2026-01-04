@@ -1,5 +1,7 @@
+#!/usr/bin/env node
 import express from "express";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
   CallToolRequestSchema,
@@ -29,7 +31,7 @@ const LOG_FILE = path.join(process.cwd(), "mcp-server.log");
 function log(msg: string) {
   const entry = `[${new Date().toISOString()}] ${msg}\n`;
   fs.appendFileSync(LOG_FILE, entry);
-  console.log(msg);
+  console.error(msg);
 }
 
 // --- Services ---
@@ -45,7 +47,12 @@ class PoolManager {
     const configPath = process.env.MCP_DB_CONFIG_PATH || "databases.json";
     if (fs.existsSync(configPath)) {
       try {
-        this.configs = JSON.parse(fs.readFileSync(configPath, "utf8"));
+        const rawConfig = fs.readFileSync(configPath, "utf8");
+        // Substitute ${VAR_NAME} with environment variables
+        const substitutedConfig = rawConfig.replace(/\$\{(.+?)\}/g, (_, varName) => {
+          return process.env[varName] || "";
+        });
+        this.configs = JSON.parse(substitutedConfig);
       } catch (error) {
         log(`Error loading database configs: ${error}`);
       }
@@ -308,38 +315,46 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 
-// --- Express & Swagger ---
-const app = express();
-app.use(cors());
+// --- Transport Setup ---
+const args = process.argv.slice(2);
 
-const swaggerOptions = {
-  definition: {
-    openapi: "3.0.0",
-    info: { title: "MCP Analytics Optimized", version: "1.3.0" },
-    servers: [{ url: `http://localhost:${process.env.PORT || 3032}` }],
-  },
-  apis: [],
-};
-const swaggerDocs = swaggerJsdoc(swaggerOptions);
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocs));
-
-let transport: SSEServerTransport;
-
-app.get("/sse", async (req, res) => {
-  transport = new SSEServerTransport("/messages", res);
+if (args.includes("--stdio")) {
+  const transport = new StdioServerTransport();
   await server.connect(transport);
-});
+} else {
+  // --- Express & Swagger ---
+  const app = express();
+  app.use(cors());
 
-app.post("/messages", async (req, res) => {
-  if (transport) await transport.handlePostMessage(req, res);
-  else res.status(404).send("Transport not initialized");
-});
+  const swaggerOptions = {
+    definition: {
+      openapi: "3.0.0",
+      info: { title: "MCP Analytics Optimized", version: "1.3.0" },
+      servers: [{ url: `http://localhost:${process.env.PORT || 3032}` }],
+    },
+    apis: [],
+  };
+  const swaggerDocs = swaggerJsdoc(swaggerOptions);
+  app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
-const PORT = process.env.PORT || 3032;
-const httpServer = app.listen(PORT, () => {
-  console.log(`🚀 Optimized MCP Server running on port ${PORT}`);
-  console.log(`📄 Swagger: http://localhost:${PORT}/api-docs`);
-});
+  let transport: SSEServerTransport;
+
+  app.get("/sse", async (req, res) => {
+    transport = new SSEServerTransport("/messages", res);
+    await server.connect(transport);
+  });
+
+  app.post("/messages", async (req, res) => {
+    if (transport) await transport.handlePostMessage(req, res);
+    else res.status(404).send("Transport not initialized");
+  });
+
+  const PORT = process.env.PORT || 3032;
+  const httpServer = app.listen(PORT, () => {
+    console.error(`🚀 Optimized MCP Server running on port ${PORT}`);
+    console.error(`📄 Swagger: http://localhost:${PORT}/api-docs`);
+  });
+}
 
 // Prevent immediate exit
 setInterval(() => {}, 10000);

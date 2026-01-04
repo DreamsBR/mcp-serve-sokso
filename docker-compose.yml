@@ -1,0 +1,9 @@
+services:
+  analytics-mcp:
+    build: .
+    container_name: analytics-mcp
+    restart: always
+    ports:
+      - "3032:3032"
+    env_file:
+      - .env
