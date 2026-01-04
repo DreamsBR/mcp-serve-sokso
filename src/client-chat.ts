@@ -87,11 +87,14 @@ async function main() {
           messages.push(msg); // Guardar contexto
 
           for (const toolCall of msg.tool_calls) {
+            // @ts-ignore
             const args = JSON.parse(toolCall.function.arguments);
+            // @ts-ignore
             console.log(`   > Ejecutando: ${toolCall.function.name}`);
 
             // Ejecutar herramienta vía MCP
             const result = await client.callTool({
+              // @ts-ignore
               name: toolCall.function.name,
               arguments: args,
             });
