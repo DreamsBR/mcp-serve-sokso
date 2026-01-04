@@ -11,6 +11,12 @@ import fs from "fs";
 import cors from "cors";
 import swaggerUi from "swagger-ui-express";
 import swaggerJsdoc from "swagger-jsdoc";
+import path from "path";
+import { fileURLToPath } from 'url';
+import { processQuery } from "./gemini_agent.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // --- Configuration ---
 const dotenvPath = process.env.DOTENV_PATH;
@@ -30,13 +36,39 @@ class PoolManager {
   }
 
   loadConfigs() {
-    const configPath = process.env.MCP_DB_CONFIG_PATH || "databases.json";
-    if (fs.existsSync(configPath)) {
+    const configPathEnv = process.env.MCP_DB_CONFIG_PATH;
+    const possiblePaths = [
+        configPathEnv,
+        "databases.json",
+        path.join(__dirname, 'databases.json'),
+        path.join(__dirname, '..', 'databases.json')
+    ].filter((p): p is string => !!p);
+
+    let configPath = "";
+    for (const p of possiblePaths) {
+        if (fs.existsSync(p)) {
+            configPath = p;
+            break;
+        }
+    }
+
+    if (configPath) {
       try {
-        this.configs = JSON.parse(fs.readFileSync(configPath, "utf8"));
+        const rawConfigs = JSON.parse(fs.readFileSync(configPath, "utf8"));
+        // Resolver variables de entorno en las configuraciones
+        for (const [key, value] of Object.entries(rawConfigs)) {
+            if (typeof value === "string" && value.startsWith("DB_") && process.env[value]) {
+                this.configs[key] = process.env[value]!;
+            } else {
+                this.configs[key] = value as string;
+            }
+        }
+        console.log(`Loaded database configs from ${configPath}:`, Object.keys(this.configs));
       } catch (error) {
         console.error("Error loading database configs:", error);
       }
+    } else {
+        console.warn(`Warning: databases.json not found. Checked: ${possiblePaths.join(", ")}`);
     }
 
     if (process.env.DB_HOST && !this.configs["default"]) {
@@ -97,19 +129,24 @@ const server = new Server(
 
 // --- Tool Definitions ---
 server.setRequestHandler(ListToolsRequestSchema, async () => {
+  // Recargar configuraciones para tener la lista actualizada de bases de datos
+  poolManager.loadConfigs();
+  // @ts-ignore - Acceder a propiedad privada para listar DBs disponibles en la descripción
+  const availableDbs = Object.keys(poolManager['configs']).join(", ");
+  
   return {
     tools: [
       {
         name: "inspect_schema",
         description:
-          "Lista todas las tablas y sus columnas en la base de datos para entender la estructura.",
+          `Lista todas las tablas y sus columnas en la base de datos para entender la estructura. Bases de datos disponibles: ${availableDbs}`,
         inputSchema: {
           type: "object",
           properties: {
             db: {
               type: "string",
               description:
-                "Nombre de la base de datos a inspeccionar (según databases.json). Opcional, usa 'default' por defecto.",
+                `Nombre de la base de datos a inspeccionar (según databases.json). Opcional, usa 'default' por defecto. Disponibles: ${availableDbs}`,
             },
           },
         },
@@ -117,7 +154,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "run_query",
         description:
-          "Ejecuta una consulta SQL de lectura (SELECT) en la base de datos.",
+          `Ejecuta una consulta SQL de lectura (SELECT) en la base de datos. Bases de datos disponibles: ${availableDbs}`,
         inputSchema: {
           type: "object",
           properties: {
@@ -129,7 +166,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             db: {
               type: "string",
               description:
-                "Nombre de la base de datos donde ejecutar la consulta. Opcional.",
+                `Nombre de la base de datos donde ejecutar la consulta. Opcional. Disponibles: ${availableDbs}`,
             },
           },
           required: ["query"],
@@ -303,6 +340,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 // --- Express Server (SSE) ---
 const app = express();
 app.use(cors());
+
+// --- Chat Endpoint ---
+app.post("/chat", express.json(), async (req, res) => {
+    const prompt = req.body.prompt;
+    if (!prompt) {
+        res.status(400).json({ error: "Prompt is required" });
+        return;
+    }
+
+    try {
+        const response = await processQuery(prompt);
+        res.json({ response });
+    } catch (error: any) {
+        console.error("Error in chat endpoint:", error);
+        res.status(500).json({ error: error.message || "Internal Server Error" });
+    }
+});
+
 
 // --- Swagger Setup ---
 const swaggerOptions = {

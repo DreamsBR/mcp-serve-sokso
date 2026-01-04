@@ -1,6 +1,5 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import * as dotenv from "dotenv";
 import { EventSource } from "eventsource";
 
@@ -8,26 +7,30 @@ import { EventSource } from "eventsource";
 dotenv.config();
 
 // Polyfill para EventSource (necesario en Node.js para SSE)
-global.EventSource = EventSource as any;
+// @ts-ignore
+if (!global.EventSource) {
+    // @ts-ignore
+    global.EventSource = EventSource;
+}
 
-const MCP_SERVER_URL = "http://localhost:3035/sse";
+const MCP_SERVER_URL = `http://127.0.0.1:${process.env.PORT || 3032}/sse`;
 
-async function main() {
-  console.log("🚀 Iniciando Cliente Gemini (Generative AI) + MCP...");
+export async function processQuery(userPrompt: string): Promise<string> {
+  console.log(`🚀 Iniciando Agente Gemini (Generative AI) + MCP en ${MCP_SERVER_URL}...`);
   
   // 1. Conectar al Servidor MCP
   const transport = new SSEClientTransport(new URL(MCP_SERVER_URL));
-  const mcpClient = new Client(
-    { name: "gemini-test-client", version: "1.0.0" },
-    { capabilities: {} }
-  );
-
-  try {
-    console.log(`🔌 Conectando a ${MCP_SERVER_URL}...`);
-    await mcpClient.connect(transport);
-    console.log("✅ Conexión MCP establecida.");
-
-    // 2. Obtener herramientas disponibles del servidor MCP
+    const mcpClient = new Client(
+      { name: "gemini-agent-client", version: "1.0.0" },
+      { capabilities: {} }
+    );
+  
+    try {
+      console.log(`🔌 Conectando a ${MCP_SERVER_URL}...`);
+      await mcpClient.connect(transport);
+      console.log("✅ Conexión MCP establecida.");
+  
+      // 2. Obtener herramientas disponibles del servidor MCP
     // @ts-ignore
     const toolsList = await mcpClient.listTools();
     // @ts-ignore
@@ -41,25 +44,11 @@ async function main() {
     // 3. Configurar Gemini con API Key
     const apiKey = process.env.VERTEX_API_KEY?.trim();
     if (!apiKey) {
-        console.error("❌ Falta la API Key (VERTEX_API_KEY)");
-        process.exit(1);
+        throw new Error("❌ Falta la API Key (VERTEX_API_KEY)");
     }
+    
+    // console.log("🛠️  Configurando cliente REST personalizado para Vertex AI con API Key...");
 
-    // NOTA: Para usar API Key con Vertex AI, no se usa GoogleGenerativeAI SDK directamente
-    // porque este apunta a generativelanguage.googleapis.com (Google AI Studio).
-    // Vertex AI requiere OAuth2 o llamadas REST directas si se usa API Key en ciertos contextos,
-    // pero oficialmente Vertex AI no soporta API Key en el SDK de Node.js igual que AI Studio.
-    
-    // Solución híbrida: Usar fetch directo para simular el cliente de Gemini pero apuntando a Vertex
-    // O volver a usar VertexAI SDK pero configurando la autenticación correctamente.
-    
-    // Dado que el usuario proporcionó una API Key que funciona con un CURL a Vertex AI,
-    // implementaremos un cliente simple personalizado que use esa API Key.
-    
-    console.log("🛠️  Configurando cliente REST personalizado para Vertex AI con API Key...");
-
-    const PROJECT = process.env.GOOGLE_CLOUD_PROJECT;
-    const LOCATION = process.env.GOOGLE_CLOUD_LOCATION;
     const API_KEY = apiKey;
     const MODEL_ID = process.env.VERTEX_MODEL || "gemini-2.0-flash-lite-preview-02-05";
 
@@ -124,7 +113,6 @@ async function main() {
         }
     ];
 
-    const userPrompt = "Realiza el analisis de la base de datos pedidosproduction";
     console.log(`\n💬 Prompt Usuario: "${userPrompt}"\n`);
     
     // Agregar prompt de usuario al historial
@@ -214,12 +202,16 @@ async function main() {
     const finalText = parts.filter((p: any) => p.text).map((p: any) => p.text).join("") || "No text response";
     console.log(finalText);
     console.log("-----------------------------------");
+    
+    return finalText;
 
   } catch (error: any) {
     console.error("❌ Error:", error.message || error);
+    throw error;
   } finally {
-    process.exit(0);
+      // Cerrar conexión
+      try {
+        await mcpClient.close();
+      } catch (e) {}
   }
 }
-
-main();
