@@ -5,6 +5,8 @@ build/
 
 # Env & Config
 .env
+.env.*
+!.env.example
 
 # Logs
 *.log
