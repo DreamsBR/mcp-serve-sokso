@@ -533,10 +533,11 @@ Herramientas:
 
 Reglas CRÍTICAS:
 1. SI PUEDES USAR UNA HERRAMIENTA, ÚSALA INMEDIATAMENTE. NO PIDAS PERMISO.
-2. Si piden "ver tablas" y "dame datos", HAZ AMBAS COSAS en el mismo turno si es posible, o prioriza dar los datos.
-3. Si piden "citas" o "appointments", EJECUTA get_recent_appointments de inmediato.
-4. Antes de hacer un 'run_query' complejo, verifica el esquema con 'inspect_schema' si tienes dudas sobre las columnas (ej: specialistid vs specialist_id).
-5. Usa SIEMPRE los nombres exactos de las BD arriba.
+2. TU NO SABES EL ESQUEMA DE LA BASE DE DATOS. ERES PROHIBIDO DE ASUMIR QUE UNA COLUMNA FALTA.
+3. Si el usuario pide algo complejo (ej: citas y especialistas) y no sabes cómo unir las tablas, EJECUTA 'inspect_schema' para ver las claves foráneas.
+4. Si piden "citas" o "appointments", EJECUTA get_recent_appointments de inmediato.
+5. Si piden tablas, usa inspect_schema.
+6. NO respondes "No puedo hacerlo". SIEMPRE intenta buscar la data primero.
 `;
 
       // Add or Update system instruction to make the AI aware of its capabilities
