@@ -44,6 +44,13 @@ class PoolManager {
   }
 
   loadConfigs() {
+    // Debug: Check if env vars are loaded
+    console.log("DEBUG ENV VARS:", {
+        FISIO: process.env.DB_FISIOTERAPIA_URL ? "SET" : "UNSET",
+        PEDIDOS: process.env.DB_PEDIDOS_URL ? "SET" : "UNSET",
+        PROD: process.env.DB_PEDIDOSPRODUCTION_URL ? "SET" : "UNSET"
+    });
+
     const configPath = process.env.MCP_DB_CONFIG_PATH || "databases.json";
     if (fs.existsSync(configPath)) {
       try {
