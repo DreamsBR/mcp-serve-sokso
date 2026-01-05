@@ -707,7 +707,12 @@ Reglas CRÍTICAS:
          }
 
          // Add tool response to history
-         chatHistory.push(candidate.content); // The function call request
+         // FIX: Gemini requires content to be an object, not just parts array
+         chatHistory.push({
+             role: "model",
+             parts: candidate.content.parts
+         });
+
          chatHistory.push({
             role: "function",
             parts: [{
