@@ -215,6 +215,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         }
       },
       {
+        name: "get_recent_appointments",
+        description: "Fetches recent appointments from the fisioterapia database.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            limit: { type: "number", description: "Max records to return (default 50)" },
+            db: { type: "string", description: "Database name (default: fisioterapia)" }
+          }
+        }
+      },
+      {
         name: "get_aws_logs",
         description: "Fetches AWS CloudWatch logs for a specific time range.",
         inputSchema: {
@@ -290,6 +301,31 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       } catch (error: any) {
         return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+      }
+    }
+
+    case "get_recent_appointments": {
+      const limit = Number(request.params.arguments?.limit) || 50;
+      const targetDb = (request.params.arguments?.db as string) || "fisioterapia";
+      try {
+        const pool = await poolManager.getPool(targetDb);
+        const query = `SELECT * FROM appointments ORDER BY id DESC LIMIT $1`;
+        const result = await pool.query(query, [limit]);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result.rows, null, 2) }]
+        };
+      } catch (error: any) {
+         // Fallback if 'id' or 'appointments' doesn't exist, try simple select
+         try {
+            const pool = await poolManager.getPool(targetDb);
+            const query = `SELECT * FROM appointments LIMIT $1`;
+            const result = await pool.query(query, [limit]);
+            return {
+              content: [{ type: "text", text: JSON.stringify(result.rows, null, 2) }]
+            };
+         } catch (err2: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+         }
       }
     }
 
@@ -577,6 +613,21 @@ Reglas:
                 const query = `SELECT "sIdPedidoDetalle" as id, "sSkuProducto" as sku, "dtFechaPedido" as fecha, "nCantidad" as qty, "nCantidadComprometida" as committed FROM pedidosproduccion WHERE "sEstadoEnvioNetsuite" = 'ENVIADO' AND "sAccionDirectora" = 'CONFIRMADO' AND CAST("nCantidad" AS NUMERIC) > CAST("nCantidadComprometida" AS NUMERIC) LIMIT $1`;
                 const resDb = await pool.query(query, [limit]);
                 toolResult = JSON.stringify({ count: resDb.rowCount, data: resDb.rows });
+            }
+            else if (fnName === "get_recent_appointments") {
+                const limit = Number(fnArgs?.limit) || 50;
+                const targetDb = (fnArgs?.db as string) || "fisioterapia";
+                try {
+                    const pool = await poolManager.getPool(targetDb);
+                    const query = `SELECT * FROM appointments ORDER BY id DESC LIMIT $1`;
+                    const resDb = await pool.query(query, [limit]);
+                    toolResult = JSON.stringify(resDb.rows);
+                } catch (e: any) {
+                    const pool = await poolManager.getPool(targetDb);
+                    const query = `SELECT * FROM appointments LIMIT $1`;
+                    const resDb = await pool.query(query, [limit]);
+                    toolResult = JSON.stringify(resDb.rows);
+                }
             } 
             else if (fnName === "get_aws_logs") {
                  const logs = await fetchAWSLogs(fnArgs.logGroupName, fnArgs.startTime, fnArgs.endTime, fnArgs.filterPattern);
