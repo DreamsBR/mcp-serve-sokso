@@ -58,6 +58,17 @@ class PoolManager {
       }
     }
 
+    // Load configs from ENV variables directly if not in databases.json
+    if (process.env.DB_FISIOTERAPIA_URL && !this.configs["fisioterapia"]) {
+        this.configs["fisioterapia"] = process.env.DB_FISIOTERAPIA_URL;
+    }
+    if (process.env.DB_PEDIDOS_URL && !this.configs["pedidos"]) {
+        this.configs["pedidos"] = process.env.DB_PEDIDOS_URL;
+    }
+    if (process.env.DB_PEDIDOSPRODUCTION_URL && !this.configs["pedidosproduction"]) {
+        this.configs["pedidosproduction"] = process.env.DB_PEDIDOSPRODUCTION_URL;
+    }
+
     if (process.env.DB_HOST && !this.configs["default"]) {
       const connectionString = `postgresql://${process.env.DB_USER}:${
         process.env.DB_PASSWORD
@@ -66,6 +77,9 @@ class PoolManager {
       }`;
       this.configs["default"] = connectionString;
     }
+    
+    // Log loaded configurations (masking passwords)
+    log(`Loaded database configurations: ${Object.keys(this.configs).join(", ")}`);
   }
 
   async getPool(name = "default"): Promise<pg.Pool> {
