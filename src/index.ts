@@ -514,12 +514,7 @@ if (args.includes("--stdio")) {
       // If history provided by n8n, use it. Otherwise start fresh.
       let chatHistory = history || [];
       
-      // Add system instruction to make the AI aware of its capabilities
-      if (chatHistory.length === 0) {
-        // Optimization: Reduce token usage in system prompt
-        chatHistory.push({
-            role: "user",
-            parts: [{ text: `
+      const SYSTEM_PROMPT = `
 Sistema: Eres un asistente de análisis de datos MCP.
 Bases de Datos Disponibles (param 'db'):
 - 'pedidosproduction' (Principal)
@@ -528,6 +523,7 @@ Bases de Datos Disponibles (param 'db'):
 
 Herramientas:
 - scan_backorders: Busca pedidos sin stock.
+- get_recent_appointments: Obtiene citas recientes de fisioterapia.
 - get_aws_logs: Logs de AWS.
 - analyze_orders_in_logs: Cruza pedidos/logs.
 - run_query: SQL SELECT.
@@ -537,13 +533,37 @@ Reglas:
 1. Responde conciso.
 2. Si piden tablas, usa inspect_schema.
 3. Si piden backorders, usa scan_backorders.
-4. Usa SIEMPRE los nombres exactos de las BD arriba.
-            ` }]
+4. Si piden citas, usa get_recent_appointments.
+5. Usa SIEMPRE los nombres exactos de las BD arriba.
+`;
+
+      // Add or Update system instruction to make the AI aware of its capabilities
+      if (chatHistory.length === 0) {
+        // Optimization: Reduce token usage in system prompt
+        chatHistory.push({
+            role: "user",
+            parts: [{ text: SYSTEM_PROMPT }]
         });
         chatHistory.push({
             role: "model",
             parts: [{ text: "OK" }]
         });
+      } else {
+        // Check if first message is system prompt and update it
+        const firstMsg = chatHistory[0];
+        if (firstMsg?.role === "user" && firstMsg?.parts?.[0]?.text?.includes("Sistema:")) {
+             firstMsg.parts[0].text = SYSTEM_PROMPT;
+        } else {
+             // Prepend if missing
+             chatHistory.unshift({
+                role: "model",
+                parts: [{ text: "OK" }]
+             });
+             chatHistory.unshift({
+                role: "user",
+                parts: [{ text: SYSTEM_PROMPT }]
+             });
+        }
       }
 
       // --- TOKEN OPTIMIZATION ---
