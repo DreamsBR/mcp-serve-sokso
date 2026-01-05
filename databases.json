@@ -1,0 +1,5 @@
+{
+    "fisioterapia": "${DB_FISIOTERAPIA_URL}",
+    "pedidos": "${DB_PEDIDOS_URL}",
+    "pedidosproduction": "${DB_PEDIDOSPRODUCTION_URL}"
+}
