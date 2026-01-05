@@ -46,9 +46,9 @@ class PoolManager {
   loadConfigs() {
     // Debug: Check if env vars are loaded
     console.log("DEBUG ENV VARS:", {
-        FISIO: process.env.DB_FISIOTERAPIA_URL ? "SET" : "UNSET",
-        PEDIDOS: process.env.DB_PEDIDOS_URL ? "SET" : "UNSET",
-        PROD: process.env.DB_PEDIDOSPRODUCTION_URL ? "SET" : "UNSET"
+      FISIO: process.env.DB_FISIOTERAPIA_URL ? "SET" : "UNSET",
+      PEDIDOS: process.env.DB_PEDIDOS_URL ? "SET" : "UNSET",
+      PROD: process.env.DB_PEDIDOSPRODUCTION_URL ? "SET" : "UNSET"
     });
 
     const configPath = process.env.MCP_DB_CONFIG_PATH || "databases.json";
@@ -67,24 +67,22 @@ class PoolManager {
 
     // Load configs from ENV variables directly if not in databases.json
     if (process.env.DB_FISIOTERAPIA_URL && !this.configs["fisioterapia"]) {
-        this.configs["fisioterapia"] = process.env.DB_FISIOTERAPIA_URL;
+      this.configs["fisioterapia"] = process.env.DB_FISIOTERAPIA_URL;
     }
     if (process.env.DB_PEDIDOS_URL && !this.configs["pedidos"]) {
-        this.configs["pedidos"] = process.env.DB_PEDIDOS_URL;
+      this.configs["pedidos"] = process.env.DB_PEDIDOS_URL;
     }
     if (process.env.DB_PEDIDOSPRODUCTION_URL && !this.configs["pedidosproduction"]) {
-        this.configs["pedidosproduction"] = process.env.DB_PEDIDOSPRODUCTION_URL;
+      this.configs["pedidosproduction"] = process.env.DB_PEDIDOSPRODUCTION_URL;
     }
 
     if (process.env.DB_HOST && !this.configs["default"]) {
-      const connectionString = `postgresql://${process.env.DB_USER}:${
-        process.env.DB_PASSWORD
-      }@${process.env.DB_HOST}:${process.env.DB_PORT || 5432}/${
-        process.env.DB_NAME
-      }`;
+      const connectionString = `postgresql://${process.env.DB_USER}:${process.env.DB_PASSWORD
+        }@${process.env.DB_HOST}:${process.env.DB_PORT || 5432}/${process.env.DB_NAME
+        }`;
       this.configs["default"] = connectionString;
     }
-    
+
     // Log loaded configurations (masking passwords)
     log(`Loaded database configurations: ${Object.keys(this.configs).join(", ")}`);
   }
@@ -106,7 +104,7 @@ class PoolManager {
         connectionString.includes("127.0.0.1") ||
         connectionString.includes("postgres") || // Docker internal alias often used locally
         connectionString.includes("sslmode=disable");
-        
+
       const forceSSL = (!isLocal && !connectionString.includes("sslmode=disable")) || connectionString.includes("sslmode=require");
 
       // FIX: If forceSSL is false, we must pass 'false' or undefined, NOT an object.
@@ -290,14 +288,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             AND CAST("nCantidad" AS NUMERIC) > CAST("nCantidadComprometida" AS NUMERIC)
           LIMIT $1
         `;
-        
+
         const result = await pool.query(query, [limit]);
         return {
-          content: [{ type: "text", text: JSON.stringify({
-            count: result.rowCount,
-            note: "Showing top results only. Use these IDs to check logs.",
-            data: result.rows
-          }, null, 2) }]
+          content: [{
+            type: "text", text: JSON.stringify({
+              count: result.rowCount,
+              note: "Showing top results only. Use these IDs to check logs.",
+              data: result.rows
+            }, null, 2)
+          }]
         };
       } catch (error: any) {
         return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
@@ -315,17 +315,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [{ type: "text", text: JSON.stringify(result.rows, null, 2) }]
         };
       } catch (error: any) {
-         // Fallback if 'id' or 'appointments' doesn't exist, try simple select
-         try {
-            const pool = await poolManager.getPool(targetDb);
-            const query = `SELECT * FROM appointments LIMIT $1`;
-            const result = await pool.query(query, [limit]);
-            return {
-              content: [{ type: "text", text: JSON.stringify(result.rows, null, 2) }]
-            };
-         } catch (err2: any) {
-            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
-         }
+        // Fallback if 'id' or 'appointments' doesn't exist, try simple select
+        try {
+          const pool = await poolManager.getPool(targetDb);
+          const query = `SELECT * FROM appointments LIMIT $1`;
+          const result = await pool.query(query, [limit]);
+          return {
+            content: [{ type: "text", text: JSON.stringify(result.rows, null, 2) }]
+          };
+        } catch (err2: any) {
+          return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
       }
     }
 
@@ -338,14 +338,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     case "analyze_orders_in_logs": {
       const { orders, logGroupNames } = request.params.arguments as any;
       const results = [];
-      
+
       // Limit to 5 orders to prevent token explosion
-      const ordersToProcess = orders.slice(0, 5); 
+      const ordersToProcess = orders.slice(0, 5);
 
       for (const order of ordersToProcess) {
         const id = order.id || order.sIdPedidoDetalle;
         const date = order.fecha || order.dtFechaPedido;
-        
+
         if (!date) continue;
 
         const start = DateTime.fromISO(date).minus({ minutes: 5 }).toFormat('yyyy-MM-dd HH:mm:ss');
@@ -424,13 +424,13 @@ if (args.includes("--stdio")) {
       const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
 
       if (!message) {
-         res.status(400).json({ error: "Message is required" });
-         return;
+        res.status(400).json({ error: "Message is required" });
+        return;
       }
 
       if (!GOOGLE_API_KEY) {
-         res.status(500).json({ error: "GOOGLE_API_KEY not found in server env" });
-         return;
+        res.status(500).json({ error: "GOOGLE_API_KEY not found in server env" });
+        return;
       }
 
       const GEMINI_URL = `https://aiplatform.googleapis.com/v1/publishers/google/models/${GEMINI_MODEL}:generateContent?key=${GOOGLE_API_KEY}`;
@@ -489,14 +489,14 @@ if (args.includes("--stdio")) {
           }
         },
         {
-            name: "inspect_schema",
-            description: "Lists all tables and their columns in the database to understand structure.",
-            parameters: {
-              type: "object",
-              properties: {
-                db: { type: "string", description: "Database name to inspect (from databases.json). Optional, uses default if omitted." }
-              }
+          name: "inspect_schema",
+          description: "Lists all tables and their columns in the database to understand structure.",
+          parameters: {
+            type: "object",
+            properties: {
+              db: { type: "string", description: "Database name to inspect (from databases.json). Optional, uses default if omitted." }
             }
+          }
         }
       ];
 
@@ -513,7 +513,7 @@ if (args.includes("--stdio")) {
       // 3. Prepare Chat History
       // If history provided by n8n, use it. Otherwise start fresh.
       let chatHistory = history || [];
-      
+
       const SYSTEM_PROMPT = `
 Sistema: Eres un asistente de análisis de datos MCP PROACTIVO.
 Tu objetivo es EJECUTAR herramientas y dar DATOS, no conversar.
@@ -528,14 +528,14 @@ Herramientas:
 - get_recent_appointments: Obtiene citas recientes de fisioterapia. (Úsala cuando pidan 'citas', 'turnos', 'agendamientos' o 'appointments').
 - get_aws_logs: Logs de AWS.
 - analyze_orders_in_logs: Cruza pedidos/logs.
-- run_query: SQL SELECT.
+- run_query: SQL SELECT. **IMPORTANTE**: NO Inventes nombres de columnas. Si no estás 100% seguro del esquema, EJECUTA 'inspect_schema' PRIMERO para ver las columnas reales.
 - inspect_schema: Ver tablas BD.
 
 Reglas CRÍTICAS:
 1. SI PUEDES USAR UNA HERRAMIENTA, ÚSALA INMEDIATAMENTE. NO PIDAS PERMISO.
 2. Si piden "ver tablas" y "dame datos", HAZ AMBAS COSAS en el mismo turno si es posible, o prioriza dar los datos.
 3. Si piden "citas" o "appointments", EJECUTA get_recent_appointments de inmediato.
-4. Si piden tablas, usa inspect_schema.
+4. Antes de hacer un 'run_query' complejo, verifica el esquema con 'inspect_schema' si tienes dudas sobre las columnas (ej: specialistid vs specialist_id).
 5. Usa SIEMPRE los nombres exactos de las BD arriba.
 `;
 
@@ -543,38 +543,38 @@ Reglas CRÍTICAS:
       if (chatHistory.length === 0) {
         // Optimization: Reduce token usage in system prompt
         chatHistory.push({
-            role: "user",
-            parts: [{ text: SYSTEM_PROMPT }]
+          role: "user",
+          parts: [{ text: SYSTEM_PROMPT }]
         });
         chatHistory.push({
-            role: "model",
-            parts: [{ text: "OK" }]
+          role: "model",
+          parts: [{ text: "OK" }]
         });
       } else {
         // Check if first message is system prompt and update it
         const firstMsg = chatHistory[0];
         if (firstMsg?.role === "user" && firstMsg?.parts?.[0]?.text?.includes("Sistema:")) {
-             firstMsg.parts[0].text = SYSTEM_PROMPT;
+          firstMsg.parts[0].text = SYSTEM_PROMPT;
         } else {
-             // Prepend if missing
-             chatHistory.unshift({
-                role: "model",
-                parts: [{ text: "OK" }]
-             });
-             chatHistory.unshift({
-                role: "user",
-                parts: [{ text: SYSTEM_PROMPT }]
-             });
+          // Prepend if missing
+          chatHistory.unshift({
+            role: "model",
+            parts: [{ text: "OK" }]
+          });
+          chatHistory.unshift({
+            role: "user",
+            parts: [{ text: SYSTEM_PROMPT }]
+          });
         }
       }
 
       // --- TOKEN OPTIMIZATION ---
       // Limit history to last 10 messages to save tokens and avoid limits
       if (chatHistory.length > 10) {
-         // Keep the first 2 messages (System Prompt) and the last 8 messages
-         const systemPrompt = chatHistory.slice(0, 2);
-         const recentHistory = chatHistory.slice(-8);
-         chatHistory = [...systemPrompt, ...recentHistory];
+        // Keep the first 2 messages (System Prompt) and the last 8 messages
+        const systemPrompt = chatHistory.slice(0, 2);
+        const recentHistory = chatHistory.slice(-8);
+        chatHistory = [...systemPrompt, ...recentHistory];
       }
       // --------------------------
 
@@ -590,9 +590,9 @@ Reglas CRÍTICAS:
           tools: geminiTools,
         };
         const r = await fetch(GEMINI_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
         });
         if (!r.ok) throw new Error(`Gemini API Error: ${r.statusText} - ${await r.text()}`);
         return await r.json();
@@ -608,125 +608,125 @@ Reglas CRÍTICAS:
       const MAX_TURNS = 5;
 
       while (modelPart?.functionCall && turns < MAX_TURNS) {
-         turns++;
-         const fnName = modelPart.functionCall.name;
-         const fnArgs = modelPart.functionCall.args;
-         
-         // Execute Tool Internally (Bypassing MCP Client for speed since we are on the server)
-         let toolResult = "";
-         try {
-            // Re-use the handler logic directly
-            const mockRequest = { 
-                params: { 
-                    name: fnName, 
-                    arguments: fnArgs 
-                } 
-            };
-            
-            // We need to access the handler logic directly. 
-            // Refactoring CallToolRequestSchema handler to a reusable function would be cleaner,
-            // but for now let's use a quick internal dispatcher based on switch case we already have.
-            
-            // QUICK DISPATCHER (Copy of switch case logic)
-            const dbName = (fnArgs?.db as string) || "default";
-            if (fnName === "scan_backorders") {
-                const limit = Number(fnArgs?.limit) || 50;
-                const pool = await poolManager.getPool(dbName);
-                const query = `SELECT "sIdPedidoDetalle" as id, "sSkuProducto" as sku, "dtFechaPedido" as fecha, "nCantidad" as qty, "nCantidadComprometida" as committed FROM pedidosproduccion WHERE "sEstadoEnvioNetsuite" = 'ENVIADO' AND "sAccionDirectora" = 'CONFIRMADO' AND CAST("nCantidad" AS NUMERIC) > CAST("nCantidadComprometida" AS NUMERIC) LIMIT $1`;
-                const resDb = await pool.query(query, [limit]);
-                toolResult = JSON.stringify({ count: resDb.rowCount, data: resDb.rows });
+        turns++;
+        const fnName = modelPart.functionCall.name;
+        const fnArgs = modelPart.functionCall.args;
+
+        // Execute Tool Internally (Bypassing MCP Client for speed since we are on the server)
+        let toolResult = "";
+        try {
+          // Re-use the handler logic directly
+          const mockRequest = {
+            params: {
+              name: fnName,
+              arguments: fnArgs
             }
-            else if (fnName === "get_recent_appointments") {
-                const limit = Number(fnArgs?.limit) || 50;
-                const targetDb = (fnArgs?.db as string) || "fisioterapia";
-                try {
-                    const pool = await poolManager.getPool(targetDb);
-                    const query = `SELECT * FROM appointments ORDER BY id DESC LIMIT $1`;
-                    const resDb = await pool.query(query, [limit]);
-                    toolResult = JSON.stringify(resDb.rows);
-                } catch (e: any) {
-                    const pool = await poolManager.getPool(targetDb);
-                    const query = `SELECT * FROM appointments LIMIT $1`;
-                    const resDb = await pool.query(query, [limit]);
-                    toolResult = JSON.stringify(resDb.rows);
-                }
-            } 
-            else if (fnName === "get_aws_logs") {
-                 const logs = await fetchAWSLogs(fnArgs.logGroupName, fnArgs.startTime, fnArgs.endTime, fnArgs.filterPattern);
-                 toolResult = JSON.stringify(logs);
+          };
+
+          // We need to access the handler logic directly. 
+          // Refactoring CallToolRequestSchema handler to a reusable function would be cleaner,
+          // but for now let's use a quick internal dispatcher based on switch case we already have.
+
+          // QUICK DISPATCHER (Copy of switch case logic)
+          const dbName = (fnArgs?.db as string) || "default";
+          if (fnName === "scan_backorders") {
+            const limit = Number(fnArgs?.limit) || 50;
+            const pool = await poolManager.getPool(dbName);
+            const query = `SELECT "sIdPedidoDetalle" as id, "sSkuProducto" as sku, "dtFechaPedido" as fecha, "nCantidad" as qty, "nCantidadComprometida" as committed FROM pedidosproduccion WHERE "sEstadoEnvioNetsuite" = 'ENVIADO' AND "sAccionDirectora" = 'CONFIRMADO' AND CAST("nCantidad" AS NUMERIC) > CAST("nCantidadComprometida" AS NUMERIC) LIMIT $1`;
+            const resDb = await pool.query(query, [limit]);
+            toolResult = JSON.stringify({ count: resDb.rowCount, data: resDb.rows });
+          }
+          else if (fnName === "get_recent_appointments") {
+            const limit = Number(fnArgs?.limit) || 50;
+            const targetDb = (fnArgs?.db as string) || "fisioterapia";
+            try {
+              const pool = await poolManager.getPool(targetDb);
+              const query = `SELECT * FROM appointments ORDER BY id DESC LIMIT $1`;
+              const resDb = await pool.query(query, [limit]);
+              toolResult = JSON.stringify(resDb.rows);
+            } catch (e: any) {
+              const pool = await poolManager.getPool(targetDb);
+              const query = `SELECT * FROM appointments LIMIT $1`;
+              const resDb = await pool.query(query, [limit]);
+              toolResult = JSON.stringify(resDb.rows);
             }
-            else if (fnName === "analyze_orders_in_logs") {
-                 // Simplified logic for internal call
-                 const { orders, logGroupNames } = fnArgs;
-                 const results = [];
-                 const ordersToProcess = orders.slice(0, 5);
-                 for (const order of ordersToProcess) {
-                    const id = order.id || order.sIdPedidoDetalle;
-                    const date = order.fecha || order.dtFechaPedido;
-                    if (!date) continue;
-                    const start = DateTime.fromISO(date).minus({ minutes: 5 }).toFormat('yyyy-MM-dd HH:mm:ss');
-                    const end = DateTime.fromISO(date).plus({ minutes: 30 }).toFormat('yyyy-MM-dd HH:mm:ss');
-                    const orderLogs = [];
-                    for (const group of logGroupNames) {
-                        const logs = await fetchAWSLogs(group, start, end, `"${id}"`);
-                        if (logs.length > 0) orderLogs.push({ group, entries: logs });
-                    }
-                    results.push({ orderId: id, logs: orderLogs });
-                 }
-                 toolResult = JSON.stringify(results);
+          }
+          else if (fnName === "get_aws_logs") {
+            const logs = await fetchAWSLogs(fnArgs.logGroupName, fnArgs.startTime, fnArgs.endTime, fnArgs.filterPattern);
+            toolResult = JSON.stringify(logs);
+          }
+          else if (fnName === "analyze_orders_in_logs") {
+            // Simplified logic for internal call
+            const { orders, logGroupNames } = fnArgs;
+            const results = [];
+            const ordersToProcess = orders.slice(0, 5);
+            for (const order of ordersToProcess) {
+              const id = order.id || order.sIdPedidoDetalle;
+              const date = order.fecha || order.dtFechaPedido;
+              if (!date) continue;
+              const start = DateTime.fromISO(date).minus({ minutes: 5 }).toFormat('yyyy-MM-dd HH:mm:ss');
+              const end = DateTime.fromISO(date).plus({ minutes: 30 }).toFormat('yyyy-MM-dd HH:mm:ss');
+              const orderLogs = [];
+              for (const group of logGroupNames) {
+                const logs = await fetchAWSLogs(group, start, end, `"${id}"`);
+                if (logs.length > 0) orderLogs.push({ group, entries: logs });
+              }
+              results.push({ orderId: id, logs: orderLogs });
             }
-            else if (fnName === "run_query") {
-                 const query = String(fnArgs?.query);
-                 if (!query.trim().toLowerCase().startsWith("select")) throw new Error("Only SELECT allowed");
-                 const pool = await poolManager.getPool(dbName);
-                 const resDb = await pool.query(query);
-                 toolResult = JSON.stringify(resDb.rows);
-            }
-            else if (fnName === "inspect_schema") {
-                const pool = await poolManager.getPool(dbName);
-                const query = `
+            toolResult = JSON.stringify(results);
+          }
+          else if (fnName === "run_query") {
+            const query = String(fnArgs?.query);
+            if (!query.trim().toLowerCase().startsWith("select")) throw new Error("Only SELECT allowed");
+            const pool = await poolManager.getPool(dbName);
+            const resDb = await pool.query(query);
+            toolResult = JSON.stringify(resDb.rows);
+          }
+          else if (fnName === "inspect_schema") {
+            const pool = await poolManager.getPool(dbName);
+            const query = `
                     SELECT table_name, column_name, data_type 
                     FROM information_schema.columns 
                     WHERE table_schema = 'public' 
                     ORDER BY table_name, ordinal_position;
                 `;
-                const resDb = await pool.query(query);
-                // Group by table for cleaner output to LLM
-                const schema: Record<string, string[]> = {};
-                resDb.rows.forEach(row => {
-                    if (!schema[row.table_name]) schema[row.table_name] = [];
-                    schema[row.table_name].push(`${row.column_name} (${row.data_type})`);
-                });
-                toolResult = JSON.stringify(schema);
-            } else {
-                 toolResult = "Tool not found or not supported in Chat API";
+            const resDb = await pool.query(query);
+            // Group by table for cleaner output to LLM
+            const schema: Record<string, string[]> = {};
+            resDb.rows.forEach(row => {
+              if (!schema[row.table_name]) schema[row.table_name] = [];
+              schema[row.table_name].push(`${row.column_name} (${row.data_type})`);
+            });
+            toolResult = JSON.stringify(schema);
+          } else {
+            toolResult = "Tool not found or not supported in Chat API";
+          }
+
+        } catch (err: any) {
+          toolResult = `Error executing tool: ${err.message}`;
+        }
+
+        // Add tool response to history
+        // FIX: Gemini requires content to be an object, not just parts array
+        chatHistory.push({
+          role: "model",
+          parts: candidate.content.parts
+        });
+
+        chatHistory.push({
+          role: "function",
+          parts: [{
+            functionResponse: {
+              name: fnName,
+              response: { name: fnName, content: toolResult }
             }
+          }]
+        });
 
-         } catch (err: any) {
-            toolResult = `Error executing tool: ${err.message}`;
-         }
-
-         // Add tool response to history
-         // FIX: Gemini requires content to be an object, not just parts array
-         chatHistory.push({
-             role: "model",
-             parts: candidate.content.parts
-         });
-
-         chatHistory.push({
-            role: "function",
-            parts: [{
-              functionResponse: {
-                name: fnName,
-                response: { name: fnName, content: toolResult }
-              }
-            }]
-         });
-
-         // Call Gemini again
-         responseData = await callGemini(chatHistory);
-         candidate = responseData.candidates?.[0];
-         modelPart = candidate?.content?.parts?.[0];
+        // Call Gemini again
+        responseData = await callGemini(chatHistory);
+        candidate = responseData.candidates?.[0];
+        modelPart = candidate?.content?.parts?.[0];
       }
 
       res.json({
@@ -748,7 +748,7 @@ Reglas CRÍTICAS:
 }
 
 // Prevent immediate exit
-setInterval(() => {}, 10000);
+setInterval(() => { }, 10000);
 
 process.on("uncaughtException", (err) => {
   console.error("Uncaught Exception:", err);
