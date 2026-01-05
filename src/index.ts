@@ -103,8 +103,11 @@ class PoolManager {
 
       const isLocal =
         connectionString.includes("localhost") ||
-        connectionString.includes("127.0.0.1");
-      const forceSSL = !isLocal || connectionString.includes("sslmode=require");
+        connectionString.includes("127.0.0.1") ||
+        connectionString.includes("postgres") || // Docker internal alias often used locally
+        connectionString.includes("sslmode=disable");
+        
+      const forceSSL = (!isLocal && !connectionString.includes("sslmode=disable")) || connectionString.includes("sslmode=require");
 
       const pool = new pg.Pool({
         connectionString,
