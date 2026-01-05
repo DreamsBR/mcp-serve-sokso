@@ -109,9 +109,13 @@ class PoolManager {
         
       const forceSSL = (!isLocal && !connectionString.includes("sslmode=disable")) || connectionString.includes("sslmode=require");
 
+      // FIX: If forceSSL is false, we must pass 'false' or undefined, NOT an object.
+      // Passing { rejectUnauthorized: false } triggers SSL handshake which fails on non-SSL servers.
+      const sslConfig = forceSSL ? { rejectUnauthorized: false } : undefined;
+
       const pool = new pg.Pool({
         connectionString,
-        ssl: forceSSL ? { rejectUnauthorized: false } : false,
+        ssl: sslConfig,
         connectionTimeoutMillis: 10000,
         idleTimeoutMillis: 30000,
         max: 10,
