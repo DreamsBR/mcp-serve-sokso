@@ -490,7 +490,7 @@ if (args.includes("--stdio")) {
         },
         {
           name: "inspect_schema",
-          description: "Lists all tables and their columns in the database to understand structure.",
+          description: "CRITICAL: Lists ALL tables and columns. MUST be used if you are unsure about column names or if a query fails due to missing columns.",
           parameters: {
             type: "object",
             properties: {
@@ -531,13 +531,19 @@ Herramientas:
 - run_query: SQL SELECT. **IMPORTANTE**: NO Inventes nombres de columnas. Si no estás 100% seguro del esquema, EJECUTA 'inspect_schema' PRIMERO para ver las columnas reales.
 - inspect_schema: Ver tablas BD.
 
+PROTOCOLO DE COLUMNAS FALTANTES (ESTRICTO):
+1. SI CREES QUE FALTA UNA COLUMNA (ej: specialistId), **ESTA PROHIBIDO** DECIR "No puedo hacerlo".
+2. **DEBES** EJECUTAR INMEDIATAMENTE la herramienta \`inspect_schema\`.
+3. UNA VEZ QUE TENGAS EL ESQUEMA, BUSCA LA COLUMNA CORRECTA O LA CLAVE FORANEA.
+4. SOLO DESPUES DE VER EL ESQUEMA PUEDES INFORMAR AL USUARIO.
+
 Reglas CRÍTICAS:
 1. SI PUEDES USAR UNA HERRAMIENTA, ÚSALA INMEDIATAMENTE. NO PIDAS PERMISO.
 2. TU NO SABES EL ESQUEMA DE LA BASE DE DATOS. ERES PROHIBIDO DE ASUMIR QUE UNA COLUMNA FALTA.
 3. Si el usuario pide algo complejo (ej: citas y especialistas) y no sabes cómo unir las tablas, EJECUTA 'inspect_schema' para ver las claves foráneas.
 4. Si piden "citas" o "appointments", EJECUTA get_recent_appointments de inmediato.
 5. Si piden tablas, usa inspect_schema.
-6. NO respondes "No puedo hacerlo". SIEMPRE intenta buscar la data primero.
+6. NO respondes "No puedo hacerlo" sin haber usado inspect_schema primero.
 `;
 
       // Add or Update system instruction to make the AI aware of its capabilities
