@@ -84,7 +84,7 @@ class PoolManager {
     }
 
     // Log loaded configurations (masking passwords)
-    log(`Loaded database configurations: ${Object.keys(this.configs).join(", ")}`);
+    log(`Loaded databases configurations: ${Object.keys(this.configs).join(", ")}`);
   }
 
   async getPool(name = "default"): Promise<pg.Pool> {
