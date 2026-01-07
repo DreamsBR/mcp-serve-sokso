@@ -203,60 +203,86 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     tools: [
       {
         name: "scan_backorders",
-        description: "OPTIMIZED: Scans database for backorders (Confirmed orders with Quantity > Committed) directly in SQL. Returns summary and IDs.",
+        description: "Escanea la base de datos de pedidos para encontrar backorders (pedidos confirmados donde Cantidad > Cantidad Comprometida). Retorna resumen e IDs. Úsala para preguntas como '¿Cuántos backorders hay?' o 'Muestra los pedidos pendientes'.",
         inputSchema: {
           type: "object",
           properties: {
-            limit: { type: "number", description: "Max records to return (default 50)" },
-            db: { type: "string", description: "Database name (default: default)" }
+            limit: { type: "number", description: "Máximo de registros a retornar (default 50)" },
+            db: { type: "string", description: "Nombre de base de datos (default: default)" }
           }
         }
       },
       {
         name: "get_recent_appointments",
-        description: "Fetches recent appointments from the fisioterapia database.",
+        description: "Obtiene citas de la base de datos de fisioterapia. Puede filtrar por fecha (hoy, esta semana, mes, o rango personalizado). Úsala para responder '¿Cuántas citas tengo hoy?', 'Muestra las citas de esta semana', 'Citas del mes pasado', etc.",
         inputSchema: {
           type: "object",
           properties: {
-            limit: { type: "number", description: "Max records to return (default 50)" },
-            db: { type: "string", description: "Database name (default: fisioterapia)" }
+            date_filter: { 
+              type: "string", 
+              enum: ["today", "this_week", "this_month", "custom", "all"],
+              description: "Filtro de fecha: 'today' (hoy), 'this_week' (esta semana), 'this_month' (este mes), 'custom' (rango personalizado), 'all' (todas)" 
+            },
+            start_date: { type: "string", description: "Fecha inicio en formato YYYY-MM-DD (solo para custom)" },
+            end_date: { type: "string", description: "Fecha fin en formato YYYY-MM-DD (solo para custom)" },
+            limit: { type: "number", description: "Máximo de registros a retornar (default 100)" },
+            db: { type: "string", description: "Nombre de base de datos (default: fisioterapia)" }
+          }
+        }
+      },
+      {
+        name: "get_orders",
+        description: "Obtiene pedidos de la base de datos. Puede filtrar por fecha (hoy, esta semana, mes, o rango personalizado) y estado. Úsala para responder '¿Cuántos pedidos tengo hoy?', 'Muestra los pedidos de esta semana', 'Pedidos confirmados del mes', etc.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            date_filter: { 
+              type: "string", 
+              enum: ["today", "this_week", "this_month", "custom", "all"],
+              description: "Filtro de fecha: 'today' (hoy), 'this_week' (esta semana), 'this_month' (este mes), 'custom' (rango personalizado), 'all' (todos)" 
+            },
+            start_date: { type: "string", description: "Fecha inicio en formato YYYY-MM-DD (solo para custom)" },
+            end_date: { type: "string", description: "Fecha fin en formato YYYY-MM-DD (solo para custom)" },
+            status_filter: { type: "string", description: "Filtrar por estado: 'CONFIRMADO', 'ENVIADO', etc." },
+            limit: { type: "number", description: "Máximo de registros a retornar (default 100)" },
+            db: { type: "string", description: "Nombre de base de datos (default: pedidosproduction)" }
           }
         }
       },
       {
         name: "get_aws_logs",
-        description: "Fetches AWS CloudWatch logs for a specific time range.",
+        description: "Obtiene logs de AWS CloudWatch para un rango de tiempo específico. Úsala para investigar errores, rastrear eventos, o analizar comportamiento del sistema.",
         inputSchema: {
           type: "object",
           properties: {
-            logGroupName: { type: "string" },
-            startTime: { type: "string" },
-            endTime: { type: "string" },
-            filterPattern: { type: "string" }
+            logGroupName: { type: "string", description: "Nombre del grupo de logs en CloudWatch" },
+            startTime: { type: "string", description: "Tiempo de inicio (ISO 8601 o timestamp)" },
+            endTime: { type: "string", description: "Tiempo de fin (ISO 8601 o timestamp)" },
+            filterPattern: { type: "string", description: "Patrón de filtro (opcional)" }
           },
           required: ["logGroupName", "startTime", "endTime"]
         }
       },
       {
         name: "analyze_orders_in_logs",
-        description: "Analyzes logs for specific orders. Takes output from scan_backorders.",
+        description: "Analiza logs de AWS para pedidos específicos. Toma la salida de scan_backorders y busca eventos relacionados en los logs. Úsala para investigar por qué un pedido tiene problemas.",
         inputSchema: {
           type: "object",
           properties: {
-            orders: { type: "array", items: { type: "object" } },
-            logGroupNames: { type: "array", items: { type: "string" } }
+            orders: { type: "array", items: { type: "object" }, description: "Array de pedidos a analizar" },
+            logGroupNames: { type: "array", items: { type: "string" }, description: "Nombres de grupos de logs a buscar" }
           },
           required: ["orders", "logGroupNames"]
         }
       },
       {
         name: "run_query",
-        description: "Executes a raw SQL SELECT query (Use scan_backorders for backorders analysis).",
+        description: "Ejecuta una consulta SQL SELECT personalizada. Úsala cuando necesites filtros complejos, agregaciones (COUNT, SUM, AVG), joins, o análisis específicos que las otras herramientas no cubren. Ejemplos: 'Cuenta especialistas por especialidad', 'Total de ingresos del mes', 'Clientes con más de 5 citas'.",
         inputSchema: {
           type: "object",
           properties: {
-            query: { type: "string" },
-            db: { type: "string" }
+            query: { type: "string", description: "Consulta SQL SELECT (solo lectura)" },
+            db: { type: "string", description: "Nombre de base de datos (default: fisioterapia)" }
           },
           required: ["query"]
         }
@@ -305,27 +331,120 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     case "get_recent_appointments": {
-      const limit = Number(request.params.arguments?.limit) || 50;
+      const limit = Number(request.params.arguments?.limit) || 100;
       const targetDb = (request.params.arguments?.db as string) || "fisioterapia";
+      const dateFilter = (request.params.arguments?.date_filter as string) || "all";
+      const startDate = request.params.arguments?.start_date as string;
+      const endDate = request.params.arguments?.end_date as string;
+      
       try {
         const pool = await poolManager.getPool(targetDb);
-        const query = `SELECT * FROM appointments ORDER BY id DESC LIMIT $1`;
-        const result = await pool.query(query, [limit]);
+        
+        // Build date filter clause
+        let dateClause = "";
+        const queryParams: any[] = [];
+        
+        if (dateFilter === "today") {
+          dateClause = "WHERE DATE(appointment_date) = CURRENT_DATE";
+        } else if (dateFilter === "this_week") {
+          dateClause = "WHERE appointment_date >= DATE_TRUNC('week', CURRENT_DATE) AND appointment_date < DATE_TRUNC('week', CURRENT_DATE) + INTERVAL '1 week'";
+        } else if (dateFilter === "this_month") {
+          dateClause = "WHERE appointment_date >= DATE_TRUNC('month', CURRENT_DATE) AND appointment_date < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'";
+        } else if (dateFilter === "custom" && startDate && endDate) {
+          dateClause = "WHERE DATE(appointment_date) BETWEEN $1 AND $2";
+          queryParams.push(startDate, endDate);
+        }
+        
+        queryParams.push(limit);
+        const limitParam = `$${queryParams.length}`;
+        
+        const query = `SELECT * FROM appointments ${dateClause} ORDER BY appointment_date DESC LIMIT ${limitParam}`;
+        const result = await pool.query(query, queryParams);
+        
         return {
-          content: [{ type: "text", text: JSON.stringify(result.rows, null, 2) }]
+          content: [{ 
+            type: "text", 
+            text: JSON.stringify({
+              count: result.rowCount,
+              filter: dateFilter,
+              data: result.rows
+            }, null, 2) 
+          }]
         };
       } catch (error: any) {
-        // Fallback if 'id' or 'appointments' doesn't exist, try simple select
-        try {
-          const pool = await poolManager.getPool(targetDb);
-          const query = `SELECT * FROM appointments LIMIT $1`;
-          const result = await pool.query(query, [limit]);
-          return {
-            content: [{ type: "text", text: JSON.stringify(result.rows, null, 2) }]
-          };
-        } catch (err2: any) {
-          return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+      }
+    }
+
+    case "get_orders": {
+      const limit = Number(request.params.arguments?.limit) || 100;
+      const targetDb = (request.params.arguments?.db as string) || "pedidosproduction";
+      const dateFilter = (request.params.arguments?.date_filter as string) || "all";
+      const statusFilter = request.params.arguments?.status_filter as string;
+      const startDate = request.params.arguments?.start_date as string;
+      const endDate = request.params.arguments?.end_date as string;
+      
+      try {
+        const pool = await poolManager.getPool(targetDb);
+        
+        // Build WHERE clauses
+        const whereClauses: string[] = [];
+        const queryParams: any[] = [];
+        let paramIndex = 1;
+        
+        // Date filter
+        if (dateFilter === "today") {
+          whereClauses.push(`DATE("dtFechaPedido") = CURRENT_DATE`);
+        } else if (dateFilter === "this_week") {
+          whereClauses.push(`"dtFechaPedido" >= DATE_TRUNC('week', CURRENT_DATE) AND "dtFechaPedido" < DATE_TRUNC('week', CURRENT_DATE) + INTERVAL '1 week'`);
+        } else if (dateFilter === "this_month") {
+          whereClauses.push(`"dtFechaPedido" >= DATE_TRUNC('month', CURRENT_DATE) AND "dtFechaPedido" < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'`);
+        } else if (dateFilter === "custom" && startDate && endDate) {
+          whereClauses.push(`DATE("dtFechaPedido") BETWEEN $${paramIndex} AND $${paramIndex + 1}`);
+          queryParams.push(startDate, endDate);
+          paramIndex += 2;
         }
+        
+        // Status filter
+        if (statusFilter) {
+          whereClauses.push(`"sAccionDirectora" = $${paramIndex}`);
+          queryParams.push(statusFilter);
+          paramIndex++;
+        }
+        
+        const whereClause = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+        queryParams.push(limit);
+        
+        const query = `
+          SELECT 
+            "sIdPedidoDetalle" as id,
+            "sSkuProducto" as sku,
+            "dtFechaPedido" as fecha,
+            "nCantidad" as cantidad,
+            "nCantidadComprometida" as comprometida,
+            "sAccionDirectora" as estado,
+            "sEstadoEnvioNetsuite" as envio
+          FROM pedidosproduccion
+          ${whereClause}
+          ORDER BY "dtFechaPedido" DESC
+          LIMIT $${paramIndex}
+        `;
+        
+        const result = await pool.query(query, queryParams);
+        
+        return {
+          content: [{ 
+            type: "text", 
+            text: JSON.stringify({
+              count: result.rowCount,
+              filter: dateFilter,
+              status: statusFilter || "all",
+              data: result.rows
+            }, null, 2) 
+          }]
+        };
+      } catch (error: any) {
+        return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
       }
     }
 
